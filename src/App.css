@@ -821,6 +821,25 @@ ul { list-style: none; }
   .rail__btn { width: 44px; height: 44px; }
 }
 
+/* ---------- laptops ----------
+   The band above assumed a desktop monitor. Laptops land here instead,
+   because Windows reports CSS pixels after display scaling: a 14"
+   1920x1080 panel at the 150% Windows ships it on is a 1280x720 page,
+   and at 125% a 1536x864 one. A 1280px shell on a 1280px viewport left
+   the header pill and the hero image 24px from each bezel, which is
+   what reads as the page bursting out of the screen.
+
+   Two knobs, both already in the system: a shell narrower than the
+   glass so there is real margin, and a small step down in --scale so
+   the type is sized for the screen it is actually on. */
+@media (min-width: 1025px) and (max-width: 1439px) {
+  :root { --scale: 0.94; --shell: 1160px; }
+}
+
+@media (min-width: 1440px) and (max-width: 1599px) {
+  :root { --scale: 0.97; --shell: 1280px; }
+}
+
 /* ---------- large screens ---------- */
 @media (min-width: 1600px) {
   :root { --scale: 1.08; --shell: 1420px; }
@@ -848,6 +867,31 @@ ul { list-style: none; }
    A 6.1" phone on its side is ~390px tall. Section rhythm drawn for a
    tall screen leaves a heading alone on the first screenful, and the
    drawer, which is six links plus a button, runs off the bottom. */
+/* Wide but short, which is every laptop. Section rhythm is driven by
+   8vw, so a 1536px-wide screen took the 112px maximum whether it was
+   1080px tall or 864px: 224px of dead space between sections, 27% of
+   the viewport on a 14" panel. Height is the real constraint here, so
+   these switch to vh and the hero stops reserving a 4:3.3 portrait
+   image on a screen that has no vertical room to spare.
+
+   Only the rhythm tokens move. --scale stays with the width tiers, so
+   the two cannot fight. The anchor rules subtract --sec-pad, so nav
+   jumps follow this automatically.
+
+   The 1000px ceiling sits above every laptop height in common use,
+   including the 982px a 14-inch MacBook Pro reports, and below the
+   1080px of a desktop monitor that has the room to spare. */
+@media (min-width: 1025px) and (max-height: 1000px) {
+  :root {
+    --sec-pad: clamp(44px, 6.5vh, 72px);
+    --sec-pad-tight: clamp(30px, 4vh, 46px);
+    --close-pad: clamp(40px, 5.5vh, 62px);
+  }
+  .hero { padding: calc(var(--nav-h) + 16px) 0 clamp(28px, 4vh, 48px); }
+  .hero__media { aspect-ratio: 4 / 3; }
+  .bento__cell { min-height: 0; }
+}
+
 @media (orientation: landscape) and (max-height: 460px) {
   :root {
     --sec-pad: 40px;
