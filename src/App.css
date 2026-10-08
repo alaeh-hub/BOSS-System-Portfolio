@@ -42,9 +42,16 @@
   --glass: rgba(255, 255, 255, 0.05);
   --glass-2: rgba(255, 255, 255, 0.09);
 
-  --display: "Bricolage Grotesque Variable", "Bricolage Grotesque", system-ui, sans-serif;
-  --sans: "Rethink Sans Variable", "Rethink Sans", system-ui, -apple-system, sans-serif;
-  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* Geist and Geist Mono. The pair reads as developer tooling because
+     it is developer tooling: Geist was drawn for Vercel's own product
+     surfaces, and the mono is metrically matched to it, so a label can
+     switch family mid-layout without the baseline or the colour of the
+     text shifting. Display and body are the same family on purpose.
+     The hierarchy is carried by weight and size, not by a second
+     typeface competing with the first. */
+  --display: "Geist Variable", "Geist", system-ui, -apple-system, sans-serif;
+  --sans: "Geist Variable", "Geist", system-ui, -apple-system, sans-serif;
+  --mono: "Geist Mono Variable", "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   --r-pill: 999px;
   --r-card: calc(20px * var(--scale));
@@ -145,13 +152,46 @@ ul { list-style: none; }
 .section--tight[id] { scroll-margin-top: calc(var(--anchor-top) - var(--sec-pad-tight)); }
 .close[id] { scroll-margin-top: calc(var(--anchor-top) - var(--close-pad)); }
 
-.h1, .h2, .h3, .display { font-family: var(--display); font-weight: 800; letter-spacing: -0.03em; }
+.h1, .h2, .h3, .display { font-family: var(--display); font-weight: 700; letter-spacing: -0.035em; }
 
 .h1 { font-size: clamp(calc(36px * var(--scale)), 5.6vw, calc(64px * var(--scale))); line-height: 1.04; }
 .h2 { font-size: clamp(calc(28px * var(--scale)), 3.8vw, calc(46px * var(--scale))); line-height: 1.08; }
 .h3 { font-size: clamp(calc(18px * var(--scale)), 1.5vw, calc(21px * var(--scale))); line-height: 1.28; letter-spacing: -0.02em; }
 
 .lead { font-size: clamp(calc(15px * var(--scale)), 1.2vw, calc(18px * var(--scale))); line-height: 1.62; color: var(--muted); max-width: 60ch; }
+
+/* Visually hidden, still announced. The hero headline hands a screen
+   reader the whole sentence through this while the visible copy is
+   spelled out letter by letter behind aria-hidden. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  clip-path: inset(50%);
+  border: 0;
+}
+
+/* Typewriter. nowrap so the line does not reflow as the word grows. */
+.type { white-space: nowrap; }
+.type__caret {
+  display: inline-block;
+  width: 0.085em;
+  height: 0.82em;
+  margin-left: 0.06em;
+  vertical-align: baseline;
+  transform: translateY(0.04em);
+  border-radius: 1px;
+  background: var(--y-500);
+}
+.type__caret.is-live { animation: caret 1.05s step-end infinite; }
+@keyframes caret {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
 
 /* The one gradient-text moment on the page. Used once, in the hero. */
 .accent-grad {
@@ -345,6 +385,90 @@ ul { list-style: none; }
 .drawer a:hover { background: var(--glass-2); }
 .drawer .btn { margin-top: 8px; }
 
+/* ---------- hero backdrop ----------
+   Three layers, back to front:
+
+     1. .hero__bg-art    a CSS gradient wash. It is the base tone and
+                         it is also the fallback: the only one of the
+                         three guaranteed to paint. Parallaxed on
+                         scroll by a motion value in Hero().
+     2. .hero__bg-aura   the WebGL dependency-graph field, three.js,
+                         see src/AuraBackground.jsx. The canvas is
+                         transparent, so layer 1 shows through it.
+     3. .hero__bg-scrim  the legibility wash.
+
+   This replaced a photographic backdrop (assets/devimg.webp), which
+   is why the scrim is far lighter than a photo needed: thin additive
+   lines on black want almost no suppression, and the old alphas would
+   bury the thing worth looking at. What is left is a pool under the
+   copy column and a bottom fade. Everything right of ~52% is close to
+   clear, which is exactly where the hero has no text over it.
+
+   Contrast still holds where it has to: the copy column sits on at
+   least 0.86 of --coal-950, over a handful of 1px lines. */
+.hero { position: relative; isolation: isolate; overflow: hidden; }
+.hero__in { position: relative; z-index: 1; }
+
+.hero__bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.hero__bg-art {
+  position: absolute;
+  /* bled past the box so the parallax never exposes an edge */
+  inset: -12% -4%;
+  background:
+    radial-gradient(58% 72% at 24% 44%, rgba(255, 214, 10, 0.13), transparent 70%),
+    radial-gradient(46% 58% at 76% 26%, rgba(255, 184, 0, 0.09), transparent 72%),
+    radial-gradient(90% 90% at 50% 120%, rgba(255, 214, 10, 0.05), transparent 60%),
+    var(--coal-950);
+  will-change: transform;
+}
+
+/* Not parallaxed by CSS. Scaling a live canvas resamples the frame
+   instead of moving through the scene; the depth here comes from the
+   camera, which AuraBackground drives off the same scroll progress. */
+.hero__bg-aura { position: absolute; inset: 0; }
+.hero__bg-canvas { position: absolute; inset: 0; }
+.hero__bg-canvas canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* Keyed to the canvas, so the fade starts when the split chunk
+     actually mounts, not on a timer that may already have run out
+     by the time it does. */
+  animation: aura-in 1.5s var(--out) both;
+}
+@keyframes aura-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.hero__bg-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      100deg,
+      rgba(8, 8, 8, 0.94) 0%,
+      rgba(8, 8, 8, 0.86) 26%,
+      rgba(8, 8, 8, 0.3) 52%,
+      rgba(8, 8, 8, 0.06) 76%,
+      rgba(8, 8, 8, 0.2) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(8, 8, 8, 0.5) 0%,
+      transparent 22%,
+      transparent 62%,
+      rgba(8, 8, 8, 0.66) 90%,
+      var(--coal-950) 100%
+    );
+}
+
 /* ---------- hero: asymmetric split ---------- */
 .hero { padding: calc(var(--nav-h) + 28px) 0 clamp(48px, 6vw, 80px); }
 .hero__in {
@@ -382,7 +506,7 @@ ul { list-style: none; }
 /* ---------- stat band: no cards, hairline rhythm ---------- */
 .band { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line-soft); border-block: 1px solid var(--line-soft); }
 .band__cell { background: var(--coal-950); padding: clamp(20px, 2.6vw, 30px) clamp(16px, 2vw, 26px); }
-.band__n { font-family: var(--display); font-size: clamp(calc(30px * var(--scale)), 3.4vw, calc(42px * var(--scale))); font-weight: 800; letter-spacing: -0.04em; line-height: 1; font-variant-numeric: tabular-nums; }
+.band__n { font-family: var(--mono); word-spacing: -0.3em; font-size: clamp(calc(30px * var(--scale)), 3.4vw, calc(42px * var(--scale))); font-weight: 800; letter-spacing: -0.04em; line-height: 1; font-variant-numeric: tabular-nums; }
 .band__l { display: block; margin-top: 8px; font-size: calc(13.5px * var(--scale)); color: var(--faint); }
 
 /* ---------- bento ---------- */
@@ -417,7 +541,6 @@ ul { list-style: none; }
 /* cell with a brand gradient wash */
 .bento__cell--wash { background: linear-gradient(145deg, rgba(255, 214, 10, 0.16), rgba(255, 184, 0, 0.04) 48%, var(--coal-900) 86%); }
 
-.bento__ico { display: grid; place-items: center; width: calc(42px * var(--scale)); height: calc(42px * var(--scale)); border-radius: var(--r-sm); border: 1px solid rgba(255, 214, 10, 0.26); background: rgba(255, 214, 10, 0.1); color: var(--y-500); }
 .bento__cell p { font-size: calc(14.5px * var(--scale)); line-height: 1.6; color: var(--muted); max-width: 46ch; }
 .bento__tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; padding-top: 8px; }
 .bento__tags span { padding: 4px 10px; border-radius: var(--r-sm); border: 1px solid var(--line-soft); font-size: calc(11.5px * var(--scale)); font-weight: 600; color: var(--faint); }
@@ -673,6 +796,29 @@ ul { list-style: none; }
 }
 
 @media (max-width: 768px) {
+  /* The backdrop scrim is a left-to-right wash, which needs width to
+     work. Stacked, the copy sits over the whole frame, so a vertical
+     wash is what matches the layout and buys back the contrast.
+
+     It is heaviest across the headline and the lead and eases off
+     below them, where the media card is opaque anyway and the only
+     thing a heavier wash would hide is the field itself.
+
+     Dimmed on .hero__bg-canvas rather than .hero__bg-aura: that one
+     is the positioning wrapper, and keeping the knob off it leaves
+     the wrapper free for transforms later. */
+  .hero__bg-art { opacity: 0.75; }
+  .hero__bg-canvas { opacity: 0.8; }
+  .hero__bg-scrim {
+    background: linear-gradient(
+      180deg,
+      rgba(8, 8, 8, 0.66) 0%,
+      rgba(8, 8, 8, 0.74) 38%,
+      rgba(8, 8, 8, 0.52) 72%,
+      var(--coal-950) 100%
+    );
+  }
+
   .nav, .hdr__cta .btn { display: none; }
   .burger { display: block; }
 }
@@ -755,6 +901,11 @@ ul { list-style: none; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
+
+  /* The blanket rule below runs every animation once at 0.01ms. For a
+     blink that lands on the transparent half of the keyframe and the
+     caret disappears, so it opts out by name. */
+  .type__caret { animation: none !important; opacity: 1; }
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
