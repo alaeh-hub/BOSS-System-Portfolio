@@ -367,12 +367,17 @@ const Brand = () => (
   </a>
 );
 
-/** Duotone photo. Real imagery, tinted into the brand by CSS. */
+/** Duotone photo. Real imagery, tinted into the brand by CSS.
+    The 2x candidate is what keeps a 4K panel, where the hero frame is
+    roughly 1240 CSS px wide, from upscaling a 1040px source. The 1x
+    stays the default so a phone never pays for pixels it cannot show. */
 function Photo({ seed, w, h, alt, className = '', priority = false }) {
+  const at = (n) => `https://picsum.photos/seed/${seed}/${w * n}/${h * n}`;
   return (
     <div className={`media ${className}`}>
       <img
-        src={`https://picsum.photos/seed/${seed}/${w}/${h}`}
+        src={at(1)}
+        srcSet={`${at(1)} 1x, ${at(2)} 2x`}
         width={w}
         height={h}
         alt={alt}
