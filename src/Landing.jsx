@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import {
   AnimatePresence,
   animate,
@@ -14,21 +14,44 @@ import {
   ArrowRight,
   CaretLeft,
   CaretRight,
-  ChartLineUp,
   Check,
   EnvelopeSimple,
   FacebookLogo,
   IconContext,
   LinkedinLogo,
-  Lightning,
   Plus,
-  PlugsConnected,
-  ShieldCheck,
   SpinnerGap,
-  SquaresFour,
   WarningCircle,
   XLogo,
 } from '@phosphor-icons/react';
+
+/* three.js is ~600kB of the bundle and nothing above the fold waits on
+   it: the hero paints its gradient, its headline and its CTA without a
+   line of WebGL. Split out, it downloads in parallel with first paint
+   and fades in when it lands, instead of standing between the visitor
+   and the page. */
+const AuraBackground = lazy(() => import('./AuraBackground'));
+
+/* Probed before the import fires, not after. A browser with hardware
+   acceleration switched off cannot create a context at all, and
+   without this check it would download 540kB of three.js purely to
+   have the constructor throw. The probe is one throwaway canvas, it
+   runs once, and the hero falls back to its gradient. */
+let webgl = null;
+function hasWebGL() {
+  if (webgl !== null) return webgl;
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2');
+    webgl = Boolean(gl);
+    /* Hand the context back immediately. Browsers cap how many live
+       WebGL contexts a page may hold, and a probe has no business
+       occupying one of them. */
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
+  } catch {
+    webgl = false;
+  }
+  return webgl;
+}
 
 /* ============================================================
    Motion vocabulary
@@ -127,7 +150,6 @@ const BAND = [
 
 const SERVICES = [
   {
-    icon: Lightning,
     title: 'Workflow automation',
     copy: 'We map the handoffs that eat your week, then rebuild them as flows that run themselves.',
     tags: ['Approvals', 'Routing', 'Alerts'],
@@ -135,26 +157,22 @@ const SERVICES = [
     photo: 'boss-dispatch-desk',
   },
   {
-    icon: SquaresFour,
     title: 'Custom business systems',
     copy: 'Inventory, dispatch, billing and field ops, built around how your team already works.',
     tags: ['ERP', 'Field ops'],
   },
   {
-    icon: ChartLineUp,
     title: 'Operations dashboards',
     copy: 'One screen for what is moving, what is stuck, and what it is costing you right now.',
     tags: ['Reporting'],
   },
   {
-    icon: PlugsConnected,
     title: 'Integrations and migrations',
     copy: 'We connect the tools you already pay for and move your history across cleanly.',
     tags: ['APIs', 'Data moves'],
     wash: true,
   },
   {
-    icon: ShieldCheck,
     title: 'Access and audit control',
     copy: 'Role based permissions, audit trails and encrypted storage, shipped with the build.',
     tags: ['SSO', 'Audit logs'],
@@ -324,7 +342,7 @@ function BossMark({ size = 32 }) {
         textAnchor="middle"
         dominantBaseline="central"
         fill="#080808"
-        fontFamily="Bricolage Grotesque Variable, Bricolage Grotesque, sans-serif"
+        fontFamily="Geist Variable, Geist, system-ui, sans-serif"
         fontSize="23"
         fontWeight="800"
         letterSpacing="-1"
@@ -347,7 +365,7 @@ function ClientMark({ initials, name }) {
           textAnchor="middle"
           dominantBaseline="central"
           fill="currentColor"
-          fontFamily="Bricolage Grotesque Variable, Bricolage Grotesque, sans-serif"
+          fontFamily="Geist Variable, Geist, system-ui, sans-serif"
           fontSize="12"
           fontWeight="700"
           letterSpacing="-0.4"
@@ -527,12 +545,111 @@ function Header() {
   );
 }
 
+/* What the software is not built for. The rotation is the argument:
+   each word is another artefact that usually drives a spec and should
+   not. Kept to four short words so the headline cannot gain a line.
+
+   Module scope, not an inline literal, so the array identity is stable
+   and the typing effect below is not restarted on every render. */
+const NOT_FOR = ['demo', 'deck', 'pitch', 'mockup'];
+
+/* Types a word, holds it, deletes it, moves on, with a terminal caret.
+   Character level setState, a handful per second, so this is nowhere
+   near the per-frame work the scroll effects deliberately avoid.
+   Reduced motion gets the first word, typed out already, and a caret
+   that does not blink. */
+function Typewriter({ words }) {
+  const reduce = useReducedMotion();
+  const [index, setIndex] = useState(0);
+  const [count, setCount] = useState(0);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    if (reduce) return undefined;
+    const word = words[index];
+    const done = !deleting && count === word.length;
+    const empty = deleting && count === 0;
+
+    const t = setTimeout(
+      () => {
+        if (done) return setDeleting(true);
+        if (empty) {
+          setDeleting(false);
+          return setIndex((v) => (v + 1) % words.length);
+        }
+        setCount((v) => v + (deleting ? -1 : 1));
+      },
+      done ? 2000 : empty ? 260 : deleting ? 38 : 72,
+    );
+
+    return () => clearTimeout(t);
+  }, [count, deleting, index, reduce, words]);
+
+  return (
+    <span className="type">
+      {reduce ? words[0] : words[index].slice(0, count)}
+      <span className={`type__caret ${reduce ? '' : 'is-live'}`} />
+    </span>
+  );
+}
+
 /* Asymmetric split hero. Exactly 4 text elements: eyebrow,
    headline, subtext, CTA row. Trust signals live below, not here. */
 function Hero() {
   const reduce = useReducedMotion();
+  const ref = useRef(null);
+
+  /* Read once into state rather than called inline: the probe touches
+     the DOM, which a render pass has no business doing on every pass,
+     and the answer cannot change for the life of the page. */
+  const [webglReady] = useState(hasWebGL);
+
+  /* Parallax for the backdrop. The scroll range is the hero's own
+     travel, so the art drifts slower than the copy sitting on it and
+     the section reads as having depth rather than a flat wallpaper.
+     Motion values, so nothing here re-renders on scroll. */
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ['start start', 'end start'],
+  });
+  const bgY = useTransform(scrollYProgress, [0, 1], ['0%', '14%']);
+  const bgScale = useTransform(scrollYProgress, [0, 1], [1, 1.08]);
+
   return (
-    <section className="hero">
+    <section className="hero" ref={ref}>
+      {/* Decorative. Behind a scrim that is heaviest under the copy, so
+          the headline keeps its contrast whatever the art is doing. */}
+      <div className="hero__bg" aria-hidden="true">
+        {/* Gradient base. It is also the fallback: if WebGL is absent
+            or the context is lost, this is what stays on screen.
+            Scale belongs to the parallax motion value, so the entrance
+            only touches opacity. Animating both from `animate` and
+            `style` would leave the two writing to the same transform. */}
+        <motion.div
+          className="hero__bg-art"
+          style={reduce ? undefined : { y: bgY, scale: bgScale }}
+          initial={reduce ? false : { opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 1.1, ease: EASE }}
+        />
+        {/* The WebGL field takes the hero's own scroll progress and
+            moves its camera with it, rather than being scaled by a CSS
+            transform, which would just resample a flat image.
+
+            Its entrance is a CSS animation on the canvas rather than a
+            motion prop on this wrapper: the chunk lands whenever the
+            network says it does, and a timed fade out here would have
+            finished before the canvas it was meant to reveal existed. */}
+        {webglReady && (
+          <div className="hero__bg-aura">
+            <Suspense fallback={null}>
+              <AuraBackground progress={scrollYProgress} className="hero__bg-canvas" />
+            </Suspense>
+          </div>
+        )}
+        <div className="hero__bg-scrim" />
+      </div>
+
       <div className="wrap hero__in">
         <motion.div
           className="hero__copy"
@@ -544,7 +661,16 @@ function Hero() {
             Business Owner Strategic System
           </Item>
           <Item as="h1" className="h1">
-            Built for the floor, <span className="accent-grad">not the demo</span>
+            {/* The sentence a screen reader gets, whole and still. The
+                visible copy is hidden from the tree so nobody has to
+                listen to a word being spelled out one letter at a time. */}
+            <span className="sr-only">Built for the floor, not the demo</span>
+            <span aria-hidden="true">
+              Built for the floor,{' '}
+              <span className="accent-grad">
+                not the <Typewriter words={NOT_FOR} />
+              </span>
+            </span>
           </Item>
           <Item as="p" className="lead">
             We design and build the operational software your team actually runs on. Shipped in weeks,
@@ -659,37 +785,31 @@ function Services() {
         </div>
 
         <div className="bento">
-          {SERVICES.map((s) => {
-            const Ico = s.icon;
-            return (
-              <Item
-                className={`bento__cell ${s.span ? 'bento__cell--span2' : ''} ${s.wash ? 'bento__cell--wash' : ''}`}
-                key={s.title}
-              >
-                {s.photo && (
-                  <div className="bento__photo">
-                    <img
-                      src={`https://picsum.photos/seed/${s.photo}/900/600`}
-                      width={900}
-                      height={600}
-                      alt=""
-                      loading="lazy"
-                    />
-                  </div>
-                )}
-                <span className="bento__ico">
-                  <Ico size={21} />
-                </span>
-                <h3 className="h3">{s.title}</h3>
-                <p>{s.copy}</p>
-                <div className="bento__tags">
-                  {s.tags.map((t) => (
-                    <span key={t}>{t}</span>
-                  ))}
+          {SERVICES.map((s) => (
+            <Item
+              className={`bento__cell ${s.span ? 'bento__cell--span2' : ''} ${s.wash ? 'bento__cell--wash' : ''}`}
+              key={s.title}
+            >
+              {s.photo && (
+                <div className="bento__photo">
+                  <img
+                    src={`https://picsum.photos/seed/${s.photo}/900/600`}
+                    width={900}
+                    height={600}
+                    alt=""
+                    loading="lazy"
+                  />
                 </div>
-              </Item>
-            );
-          })}
+              )}
+              <h3 className="h3">{s.title}</h3>
+              <p>{s.copy}</p>
+              <div className="bento__tags">
+                {s.tags.map((t) => (
+                  <span key={t}>{t}</span>
+                ))}
+              </div>
+            </Item>
+          ))}
         </div>
       </Reveal>
     </section>
